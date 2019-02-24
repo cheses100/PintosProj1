@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -19,6 +20,10 @@
    Used to detect stack overflow.  See the big comment at the top
    of thread.h for details. */
 #define THREAD_MAGIC 0xcd6abf4b
+
+/* List of processes in the BLOCKED STATE, that are waiting to
+   be woken at a certain tick. */
+static struct list sleep_list;
 
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
@@ -90,6 +95,7 @@ thread_init (void)
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
+  list_init (&sleep_list);
   list_init (&ready_list);
   list_init (&all_list);
 
@@ -182,7 +188,8 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-
+	t->endTick = -1;
+	
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -312,6 +319,24 @@ thread_yield (void)
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
+}
+
+/* Yields the CPU.  The current thread is put to sleep and
+   may be scheduled again only after tick 'end'. */
+void thread_yield_for_seconds (int64_t end)
+{
+	struct thread *cur = thread_current();
+	enum intr_level old_level;
+
+	ASSERT(!intr_context());
+	
+	old_level = intr_disable ();
+	
+	list_push_back(&sleep_list, &cur->elem);
+	cur->endTick = end;
+	thread_block();
+	
+	intr_set_level(old_level);
 }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
@@ -545,13 +570,32 @@ thread_schedule_tail (struct thread *prev)
 /* Schedules a new process.  At entry, interrupts must be off and
    the running process's state must have been changed from
    running to some other state.  This function finds another
-   thread to run and switches to it.
+   thread to run and switches to it. It also checks each thread
+   in the sleeping list and puts it in the READY state if needed
 
    It's not safe to call printf() until thread_schedule_tail()
    has completed. */
 static void
 schedule (void) 
 {
+	
+	for(struct list_elem* iter = list_begin(&sleep_list);
+		iter != list_end(&sleep_list);)
+	{
+		struct thread* t = list_entry(iter, struct thread,
+		elem);
+		struct list_elem* currIter = iter;
+		iter = list_next(iter);
+		ASSERT (t->endTick >= 0);
+		if (t->endTick <= timer_ticks())
+		{
+			list_remove(currIter);
+			t->endTick = -1;
+			thread_unblock(t);
+		}
+	}
+	
+	
   struct thread *cur = running_thread ();
   struct thread *next = next_thread_to_run ();
   struct thread *prev = NULL;
