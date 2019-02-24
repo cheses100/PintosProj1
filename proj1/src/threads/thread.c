@@ -172,6 +172,7 @@ tid_t
 thread_create (const char *name, int priority,
 							 thread_func *function, void *aux) 
 {
+	
 	struct thread *t;
 	struct kernel_thread_frame *kf;
 	struct switch_entry_frame *ef;
@@ -207,7 +208,7 @@ thread_create (const char *name, int priority,
 
 	/* Add to run queue. */
 	thread_unblock (t);
-
+	thread_yield();
 	return tid;
 }
 
@@ -360,14 +361,25 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-	thread_current ()->priority = new_priority;
+	enum intr_level old_level = intr_disable ();
+	
+	struct thread * t = thread_current();
+	t->priority = (t->priority > t->base_priority) ? (t->priority > new_priority) ? t->priority : new_priority : new_priority;
+	t->base_priority = new_priority;
+	
+	thread_yield();
+	
+	intr_set_level(old_level);
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-	return thread_current ()->priority;
+	enum intr_level old_level = intr_disable ();
+	int toRet = thread_current ()->priority;
+	intr_set_level(old_level);
+	return toRet;
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -484,9 +496,12 @@ init_thread (struct thread *t, const char *name, int priority)
 
 	memset (t, 0, sizeof *t);
 	t->status = THREAD_BLOCKED;
+	t->waiting_lock = NULL;
 	strlcpy (t->name, name, sizeof t->name);
 	t->stack = (uint8_t *) t + PGSIZE;
 	t->priority = priority;
+	t->base_priority = priority;
+	list_init(&(t->held_locks));
 	t->magic = THREAD_MAGIC;
 
 	old_level = intr_disable ();
@@ -520,14 +535,13 @@ next_thread_to_run (void)
 	}
 	else {
 		int max = -1;
-		struct thread *max_priority_thread;
-		struct list_elem* max_priority_elem;
+		struct thread *max_priority_thread = NULL;
+		struct list_elem* max_priority_elem = NULL;
 
 		for(struct list_elem* iter = list_begin(&ready_list);
 		iter != list_end(&ready_list); iter = list_next(iter)) 
 		{
-			struct thread* t = list_entry(iter, struct thread,
-		elem);
+			struct thread* t = list_entry(iter, struct thread, elem);
 			if (t->priority > max) {
 				max = t->priority;
 				max_priority_thread = t;
