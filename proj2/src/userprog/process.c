@@ -37,13 +37,14 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  char* ptr;
 
-  char* realName = strtok_r(file_name, " ");
+  char* realName = strtok_r(fn_copy, " ", &ptr);
 
   
-  printf("______________\n\n\n%s\n\n\n_____________", realName);
+  //printf("______________\n\n\n%s\n\n\n_____________", realName);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (realName, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create_with_parent (thread_current(), realName, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -92,11 +93,10 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  while(true)
-    thread_yield();
-  
+  sema_down(&thread_current()->waiting);
+  return 0;
 }
-
+	
 /* Free the current process's resources. */
 void
 process_exit (void)
@@ -200,7 +200,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, char*file_name);
+static bool setup_stack (void **esp, const char*file_name);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -431,7 +431,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, char* file_name) 
+setup_stack (void **esp, const char* file_name) 
 {
   uint8_t *kpage;
   bool success = false;
