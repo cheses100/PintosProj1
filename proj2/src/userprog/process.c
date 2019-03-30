@@ -435,6 +435,7 @@ setup_stack (void **esp, const char* file_name)
 {
   uint8_t *kpage;
   bool success = false;
+  char *fn_copy;
 
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
@@ -447,7 +448,15 @@ setup_stack (void **esp, const char* file_name)
     }
   //parse out filename
   //make a list with arguments in it
-  
+  fn_copy = palloc_get_page (0);
+  if (fn_copy == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy, file_name, PGSIZE);
+  char* ptr;
+  char* curr_word = strtok_r(fn_copy, " ", &ptr);
+  // while () {
+
+  // }
   return success;
 }
 
