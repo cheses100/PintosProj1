@@ -19,7 +19,7 @@
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static bool load (const char *cmdline, char* full_name, void (**eip) (void), void **esp);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -29,6 +29,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
+  char* fn_copy2;
   tid_t tid;
 
   /* Make a copy of FILE_NAME.
@@ -38,13 +39,14 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
   char* ptr;
-
   char* realName = strtok_r(fn_copy, " ", &ptr);
-
+ fn_copy2 = palloc_get_page (0);
+  if (fn_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy2, file_name, PGSIZE);
   
-  //printf("______________\n\n\n%s\n\n\n_____________", realName);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create_with_parent (thread_current(), realName, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create_with_parent (thread_current(), realName, PRI_DEFAULT, start_process, fn_copy2);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -64,7 +66,16 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  char* fn_copy;
+   fn_copy = palloc_get_page (0);
+  if (fn_copy == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy, file_name, PGSIZE);
+  char* ptr;
+  char* real_name = strtok_r(fn_copy, " ", &ptr);
+
+  success = load (real_name, file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -211,7 +222,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name, void (**eip) (void), void **esp) 
+load (const char *file_name, char* full_name, void (**eip) (void), void **esp) 
 {
   struct thread *t = thread_current ();
   struct Elf32_Ehdr ehdr;
@@ -307,7 +318,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
     }
 
   /* Set up stack. */
-  if (!setup_stack (esp, file_name))
+  if (!setup_stack (esp, full_name))
     goto done;
 
   /* Start address. */
@@ -454,9 +465,10 @@ setup_stack (void **esp, const char* file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
   char* ptr;
   char* curr_word = strtok_r(fn_copy, " ", &ptr);
-  // while () {
-
-  // }
+  while (curr_word != NULL) {
+    printf("____________\n\n\n%s\n\n\n___________", curr_word);
+    curr_word = strtok_r(NULL, " ", &ptr);
+  }
   return success;
 }
 
