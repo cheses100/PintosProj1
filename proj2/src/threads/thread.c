@@ -10,7 +10,7 @@
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "devices/timer.h"
-#include "threads/synch.h"
+
 #include "threads/vaddr.h"
 #ifdef USERPROG
 #include "userprog/process.h"
@@ -76,6 +76,7 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
+
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
    general and it is possible in this case only because loader.S
@@ -103,6 +104,7 @@ thread_init (void)
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
+  sema_init (&running_thread()->waiting, 0);
   initial_thread->tid = allocate_tid ();
 }
 
@@ -187,6 +189,48 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+  tid = t->tid = allocate_tid ();
+  t->endTick = -1;
+  t->parent = NULL;
+  /* Stack frame for kernel_thread(). */
+  kf = alloc_frame (t, sizeof *kf);
+  kf->eip = NULL;
+  kf->function = function;
+  kf->aux = aux;
+
+  /* Stack frame for switch_entry(). */
+  ef = alloc_frame (t, sizeof *ef);
+  ef->eip = (void (*) (void)) kernel_thread;
+
+  /* Stack frame for switch_threads(). */
+  sf = alloc_frame (t, sizeof *sf);
+  sf->eip = switch_entry;
+  sf->ebp = 0;
+
+  /* Add to run queue. */
+  thread_unblock (t);
+
+  return tid;
+}
+tid_t
+thread_create_with_parent (struct thread * parent, const char *name, int priority,
+               thread_func *function, void *aux) {
+  struct thread *t;
+  struct kernel_thread_frame *kf;
+  struct switch_entry_frame *ef;
+  struct switch_threads_frame *sf;
+  tid_t tid;
+
+  ASSERT (function != NULL);
+
+  /* Allocate thread. */
+  t = palloc_get_page (PAL_ZERO);
+  if (t == NULL)
+    return TID_ERROR;
+
+  /* Initialize thread. */
+  init_thread (t, name, priority);
+  t->parent = parent;
   tid = t->tid = allocate_tid ();
   t->endTick = -1;
   /* Stack frame for kernel_thread(). */
@@ -288,6 +332,7 @@ thread_exit (void)
 {
   ASSERT (!intr_context ());
 
+
 #ifdef USERPROG
   process_exit ();
 #endif
@@ -297,6 +342,8 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
+  if (thread_current()->parent != NULL)
+      sema_up(&thread_current()->parent->waiting);
   thread_current ()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
