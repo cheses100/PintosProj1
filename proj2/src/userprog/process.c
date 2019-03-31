@@ -464,22 +464,65 @@ setup_stack (void **esp, const char* file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
   char* ptr;
-  char* curr_word = strtok_r(fn_copy, " ", &ptr);
-  int total_size = 0;
-  while (curr_word != NULL) {
-    //printf("____________\n\n\n%s\n\n\n___________", curr_word);
-    curr_word = strtok_r(NULL, " ", &ptr);
-    total_size += strlen(curr_word);
-    *esp -=strlen(curr_word);
-    memcpy(*esp, curr_word, strlen(curr_word));
+  
+  int argc = 1, total_size = 0; // get argc
+  while (file_name[total_size] != '\0')
+  {
+	  if (file_name[total_size] == ' ') argc++;
+	  total_size++;
   }
-
-  int word_align = 4 - (total_size % 4);
+  total_size++; // to include '\0'
+  
+  printf("\nSIZE:  %d\n\n", total_size);
+  
+  *esp -= total_size; // subtract stack already, copy arguments later
+  void* hexDump1Bottom = *esp;
+  void* bottomForArgs = *esp; // save bottom of stack to copy arguments backwards (topwards)
+  
+  int word_align = 4 - (total_size % 4); // align real bottom
   *esp -= word_align;
   memset(*esp, 0, word_align);
-
-  *esp -= 4;
+  
+  *esp -= 4; // copy last argument (0000)
   memset(*esp, 0, 4);
+  
+  *esp -= sizeof(char*) * argc;
+  void* hexDump2Bottom = *esp;
+  void* bottomForAddresses = *esp; // add to this while saving addresses to arguments
+  
+  *esp -= sizeof(char*); // copy argv address
+  memcpy(*esp, &bottomForAddresses, sizeof(char*));
+  
+  *esp -= sizeof(int); // copy argc
+  **((int**)esp) = argc;
+  
+  *esp -= 4; // copy return address (0)
+  memset(*esp, 0, 4);
+  
+  char* currArg = strtok_r(fn_copy, " ", &ptr);
+  
+  do {
+    
+    memcpy(bottomForArgs, currArg, strlen(currArg) + 1); // copy currArg
+  
+	memcpy(bottomForAddresses, &bottomForArgs, sizeof(char*)); // copy address of currArg
+  
+	printf("\n\nPOINTER: %p\n\n", bottomForArgs);
+	printf("ARG: %s\n\n", ((char*)bottomForArgs));
+  
+	bottomForArgs += (strlen(currArg)) + 1;
+	bottomForAddresses += sizeof(char*);
+	
+	currArg = strtok_r(NULL, " ", &ptr);
+	
+	 
+	
+  } while (currArg != NULL);
+  
+ printf("\n\n---HEX DUMP----\n");
+	hex_dump((uintptr_t)hexDump1Bottom - 32, hexDump1Bottom - 32, total_size + 32, true);
+	  printf("\n\n---HEX DUMP----\n");
+	
   return success;
 }
 
