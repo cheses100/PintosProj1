@@ -465,10 +465,21 @@ setup_stack (void **esp, const char* file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
   char* ptr;
   char* curr_word = strtok_r(fn_copy, " ", &ptr);
+  int total_size = 0;
   while (curr_word != NULL) {
-    printf("____________\n\n\n%s\n\n\n___________", curr_word);
+    //printf("____________\n\n\n%s\n\n\n___________", curr_word);
     curr_word = strtok_r(NULL, " ", &ptr);
+    total_size += strlen(curr_word);
+    *esp -=strlen(curr_word);
+    memcpy(*esp, curr_word, strlen(curr_word));
   }
+
+  int word_align = 4 - (total_size % 4);
+  *esp -= word_align;
+  memset(*esp, 0, word_align);
+
+  *esp -= 4;
+  memset(*esp, 0, 4);
   return success;
 }
 
