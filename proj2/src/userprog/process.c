@@ -466,14 +466,19 @@ setup_stack (void **esp, const char* file_name)
   char* ptr;
   
   int argc = 1, total_size = 0; // get argc
+  bool prevCharWasSpace = false;
   while (file_name[total_size] != '\0')
   {
-	  if (file_name[total_size] == ' ') argc++;
+	  if (file_name[total_size] == ' ' && !prevCharWasSpace) 
+	  {
+			prevCharWasSpace = true;
+			argc++;
+	  }
+	  else if (file_name[total_size] != ' ') prevCharWasSpace = false;
 	  total_size++;
+	  
   }
   total_size++; // to include '\0'
-  
-  printf("\nSIZE:  %d\n\n", total_size);
   
   *esp -= total_size; // subtract stack already, copy arguments later
   void* hexDump1Bottom = *esp;
@@ -507,9 +512,6 @@ setup_stack (void **esp, const char* file_name)
   
 	memcpy(bottomForAddresses, &bottomForArgs, sizeof(char*)); // copy address of currArg
   
-	printf("\n\nPOINTER: %p\n\n", bottomForArgs);
-	printf("ARG: %s\n\n", ((char*)bottomForArgs));
-  
 	bottomForArgs += (strlen(currArg)) + 1;
 	bottomForAddresses += sizeof(char*);
 	
@@ -519,9 +521,9 @@ setup_stack (void **esp, const char* file_name)
 	
   } while (currArg != NULL);
   
- printf("\n\n---HEX DUMP----\n");
+ /* printf("\n\n---HEX DUMP----\n");
 	hex_dump((uintptr_t)hexDump1Bottom - 32, hexDump1Bottom - 32, total_size + 32, true);
-	  printf("\n\n---HEX DUMP----\n");
+	  printf("\n\n---HEX DUMP----\n"); */
 	
   return success;
 }
