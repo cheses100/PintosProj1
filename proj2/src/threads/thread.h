@@ -32,8 +32,8 @@ struct fileListElem
 	int fd;
 	struct list_elem elem;
 };
-
-
+struct semaphore writingSem;
+struct semaphore readingSem;
 // wrapper to store children and their exit status
 struct childListElem
 {
@@ -160,7 +160,6 @@ void thread_add_child(struct thread * parent, struct thread * child);
 void thread_do_child_dying (struct thread * parent, struct thread* child);
 
 void thread_exit (void) NO_RETURN;
-
 
 
 void thread_yield (void);

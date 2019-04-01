@@ -14,6 +14,8 @@ static void syscall_handler (struct intr_frame *);
 int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem);
 bool addressCheck(void * adr);
 
+
+
 int argCounts[] = {
 	0, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 1
 };
@@ -90,9 +92,18 @@ syscall_handler (struct intr_frame *f)
 		case SYS_EXIT:
 		{
 			int status = *arg1;
-			
+			for (struct list_elem* iter = list_begin(&thread_current()->fileList);
+			 iter != list_end(&thread_current()->fileList);)
+			{
+				struct fileListElem* fileEl = list_entry(iter, struct fileListElem, elem);
+			  	file_close (fileEl->mFile);
+				iter = list_next(iter);
+			  	list_remove (&fileEl->elem);
+			  	free(fileEl);
+			}
 			printf("%s: exit(%d)\n", thread_current()->name, status);
 			thread_current()->exitStatus = status;
+
 			thread_exit();
 			f->eax = status;
 			break;
@@ -146,6 +157,7 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_OPEN:
 		{
+			sema_down(&writingSem);
 			//I aded this
 			char * fileName= (char*)(*arg1);
 			if(!addressCheck(fileName)) doBadExit();
@@ -158,6 +170,7 @@ syscall_handler (struct intr_frame *f)
 				newElem->fd = thread_current()->fdCounter;
 				list_push_back (&(thread_current()->fileList), &newElem->elem);
 			}
+			sema_up(&writingSem);
 			
 			f->eax = (newfile == NULL) ? -1 : thread_current()->fdCounter++;
 			break;
@@ -176,6 +189,7 @@ syscall_handler (struct intr_frame *f)
 		case SYS_READ:
 		{
 			//I added this
+			sema_down(&writingSem);
 			int fd = *arg1;
 			void* buffer = (void*)(*arg2);
 			unsigned size = *(unsigned*)arg3;
@@ -191,7 +205,7 @@ syscall_handler (struct intr_frame *f)
 				f->eax = file_read(curElem->mFile, buffer, size);
 			}
 			
-
+			sema_up(&writingSem);
 			break;
 		}
 		case SYS_WRITE:
@@ -243,6 +257,7 @@ syscall_handler (struct intr_frame *f)
 				doBadExit();
 			}
 			file_close (curElem->mFile);
+			list_remove (&curElem->elem);
 			break;
 		}
 	}
@@ -254,7 +269,7 @@ syscall_handler (struct intr_frame *f)
 
 int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem )
 {
-	
+	sema_down(&writingSem);
 	//I added/modified this
 	if (fd == STDOUT_FILENO) {
 		putbuf(buffer, size);
@@ -263,7 +278,7 @@ int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem )
 	} else {
 		size = file_write(elem->mFile, buffer, size);
 	}
-	
+	sema_up(&writingSem);
 	
 	return size;
 }

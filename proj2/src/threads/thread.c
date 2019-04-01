@@ -42,6 +42,9 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+
+
+
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
   {
@@ -93,12 +96,15 @@ static tid_t allocate_tid (void);
 void
 thread_init (void) 
 {
+
   ASSERT (intr_get_level () == INTR_OFF);
 
   lock_init (&tid_lock);
   list_init(&sleep_list);
   list_init (&ready_list);
   list_init (&all_list);
+  sema_init(&writingSem, 1);
+  sema_init(&readingSem, 1);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
