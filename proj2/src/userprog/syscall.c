@@ -25,6 +25,7 @@ int argCounts[] = {
 void
 syscall_init (void) 
 {
+  sema_init(&IOLock, 1);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
@@ -136,31 +137,45 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_CREATE:
 		{
+			sema_down(&IOLock);
 			char * fileName= (char*)(*arg1);
 			int size = *arg2;
-			if(!addressCheck(fileName)) doBadExit();
+			if(!addressCheck(fileName)) {
+				sema_up(&IOLock);
+				doBadExit();
+			}
 			
 			bool fileCreated = filesys_create(fileName, size);
 			
 			f->eax = fileCreated;
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_REMOVE:
 		{
+			sema_down(&IOLock);
 			char * fileName= (char*)(*arg1);
-			if(!addressCheck(fileName)) doBadExit();
+			if(!addressCheck(fileName)){
+				sema_up(&IOLock);
+				doBadExit();
 			
+			} 
 			bool fileRemoved = filesys_remove(fileName);
 			
 			f->eax = fileRemoved;
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_OPEN:
 		{
-			sema_down(&writingSem);
+			sema_down(&IOLock);
 			//I aded this
 			char * fileName= (char*)(*arg1);
-			if(!addressCheck(fileName)) doBadExit();
+			if(!addressCheck(fileName)){
+				sema_up(&IOLock);
+				doBadExit();
+			
+			} 
 			
 			void * newfile = filesys_open(fileName);
 			if (newfile != NULL) {
@@ -170,7 +185,7 @@ syscall_handler (struct intr_frame *f)
 				newElem->fd = thread_current()->fdCounter;
 				list_push_back (&(thread_current()->fileList), &newElem->elem);
 			}
-			sema_up(&writingSem);
+			sema_up(&IOLock);
 			
 			f->eax = (newfile == NULL) ? -1 : thread_current()->fdCounter++;
 			break;
@@ -178,25 +193,30 @@ syscall_handler (struct intr_frame *f)
 		case SYS_FILESIZE:
 		{
 			//I added this
+			sema_down(&IOLock);
 			int fd = *arg1;
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL) {
+				sema_up(&IOLock);
 				doBadExit();
 			}
 			f->eax = file_length(curElem->mFile);
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_READ:
 		{
 			//I added this
-			sema_down(&writingSem);
+			sema_down(&IOLock);
 			int fd = *arg1;
 			void* buffer = (void*)(*arg2);
 			unsigned size = *(unsigned*)arg3;
 			if(!addressCheck(buffer)) doBadExit();
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL) {
+				sema_up(&IOLock);
 				doBadExit();
+
 			}
 			
 			if (fd == 0) {
@@ -205,7 +225,7 @@ syscall_handler (struct intr_frame *f)
 				f->eax = file_read(curElem->mFile, buffer, size);
 			}
 			
-			sema_up(&writingSem);
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_WRITE:
@@ -215,7 +235,10 @@ syscall_handler (struct intr_frame *f)
 			void* buffer = (void*)(*arg2);
 			unsigned size = *(unsigned*)arg3;
 			
-			if(!addressCheck(buffer)) doBadExit();
+			if(!addressCheck(buffer)) {
+
+				doBadExit();
+			}
 			//I added/modified this
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL && fd != STDOUT_FILENO) {
@@ -228,36 +251,46 @@ syscall_handler (struct intr_frame *f)
 		case SYS_SEEK:
 		{
 			//I added this
+			sema_down(&IOLock);
 			int fd = *arg1;
 			unsigned position = *(unsigned*)arg2;
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL) {
+				sema_up(&IOLock);
 				doBadExit();
+
 			}
 			file_seek(curElem->mFile, position);
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_TELL:
 		{
 			//I added this
+			sema_down(&IOLock);
 			int fd = *arg1;
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL) {
+				sema_up(&IOLock);
 				doBadExit();
 			}
 			f->eax = file_tell(curElem->mFile);
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_CLOSE:
 		{
 			//i added this
+			sema_down(&IOLock);
 			int fd = *arg1;
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL) {
+				sema_up(&IOLock);
 				doBadExit();
 			}
 			file_close (curElem->mFile);
 			list_remove (&curElem->elem);
+			sema_up(&IOLock);
 			break;
 		}
 	}
@@ -269,16 +302,18 @@ syscall_handler (struct intr_frame *f)
 
 int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem )
 {
-	sema_down(&writingSem);
+	sema_down(&IOLock);
 	//I added/modified this
 	if (fd == STDOUT_FILENO) {
 		putbuf(buffer, size);
 	} else if (fd == 0){
 		doBadExit();
 	} else {
+		struct file * file = elem->mFile;
+		if (file->deny_write) doBadExit();
 		size = file_write(elem->mFile, buffer, size);
 	}
-	sema_up(&writingSem);
+	sema_up(&IOLock);
 	
 	return size;
 }

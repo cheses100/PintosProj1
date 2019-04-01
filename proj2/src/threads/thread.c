@@ -396,6 +396,8 @@ thread_exit (void)
 		list_remove(&childElem->elem);
 		//free(childElem);
 	}
+
+  if (current->mFile != NULL) file_allow_write(current->mFile);
 	
   current->status = THREAD_DYING;
   schedule ();
@@ -483,6 +485,20 @@ thread_get_load_avg (void)
 {
   /* Not yet implemented. */
   return 0;
+}
+
+bool thread_name_exists(const char* fileName)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list);
+       e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      printf("\n\nCOMPARING %s with %s", fileName, t->name);
+      if (strcmp(fileName, t->name) == 0) return true;
+    }
+    return false;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
@@ -582,6 +598,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->isParentWaiting = false;
   t->childLoadStatus = false;
   t->exitStatus = -1;
+  t->mFile = NULL;
   list_init(&t->fileList);
   list_init(&t->childList);
   sema_init (&t->waiting, 0);

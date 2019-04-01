@@ -119,6 +119,8 @@ struct thread
 	
 	struct list fileList;
 	struct list childList;
+
+  struct file * mFile;
 	
 	bool childLoadStatus; // to return load status when we get exec sys call
 	bool isParentWaiting; // to know if we need to sema up on parent
@@ -176,5 +178,7 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+bool thread_name_exists(const char* fileName);
 
 #endif /* threads/thread.h */

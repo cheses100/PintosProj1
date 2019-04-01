@@ -81,8 +81,8 @@ start_process (void *file_name_)
   struct thread * parent = thread_current()->parent;
   if (parent != NULL)
   {
-	parent->childLoadStatus = success;
-	sema_up(&thread_current()->parent->waiting2);
+	   parent->childLoadStatus = success;
+	   sema_up(&thread_current()->parent->waiting2);
   }
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -360,7 +360,16 @@ load (const char *file_name, char* full_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if (success)
+  {
+      thread_current()->mFile = file;
+      file_deny_write(file);
+  }
+  else
+  {
+    thread_current()->mFile = NULL;
+    file_close(file);
+  }
   return success;
 }
 /* load() helpers. */
