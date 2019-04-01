@@ -112,29 +112,23 @@ int
 process_wait (tid_t child_tid) 
 {
 	// first loop through curr threads children and look for tid
-	struct childListElem * foundListElem = NULL;
 	for (struct list_elem* iter = list_begin(&thread_current()->childList);
 		iter != list_end(&thread_current()->childList);
 		iter = list_next(iter))
 		{
 			struct childListElem * childElem = list_entry(iter, struct childListElem, elem);
 			
-			if (childElem->t != NULL && childElem->t->tid == child_tid)
+			if (childElem->tid == child_tid)
 			{ // if tid found then let that thread know we're waiting
-				
-				childElem->t->isParentWaiting = true;
-				foundListElem = childElem;
-				break;
+				if (childElem->t != NULL) 
+          {
+            childElem->t->isParentWaiting = true;
+            sema_down(&thread_current()->waiting);
+          }
+        int temp = childElem->exitStatus;
+        childElem->exitStatus = -1; // make sure its -1 next time
+        return temp;
 			}
-		}
-		
-		
-		if (foundListElem != NULL) // only sema down if tid found, else return -1
-		{
-			sema_down(&thread_current()->waiting);
-			int temp = foundListElem->exitStatus;
-			foundListElem->exitStatus = -1; // make sure its -1 next time
-			return temp;
 		}
 		
 		return -1;

@@ -37,6 +37,7 @@ struct fileListElem
 struct childListElem
 {
 	struct thread * t;
+  tid_t tid;
 	int exitStatus;
 	struct list_elem elem;
 };

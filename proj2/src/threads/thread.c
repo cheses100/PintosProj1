@@ -334,6 +334,7 @@ void thread_add_child(struct thread* parent, struct thread * child)
 {
 	// push child to parents list ezpz
 	struct childListElem * newChild = malloc(sizeof(struct childListElem));
+  newChild->tid = child->tid;
 	newChild->t = child;
 	newChild->exitStatus = -1;
 	
