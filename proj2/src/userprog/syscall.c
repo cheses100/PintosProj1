@@ -75,7 +75,9 @@ syscall_handler (struct intr_frame *f)
 			int status = *arg1;
 			
 			printf("%s: exit(%d)\n", thread_current()->name, status);
+			thread_current()->exitStatus = status;
 			thread_exit();
+			f->eax = status;
 			break;
 		}
 		case SYS_EXEC:
@@ -85,8 +87,8 @@ syscall_handler (struct intr_frame *f)
 			if (!addressCheck(execArgs)) doBadExit();
 			int pid = process_execute(execArgs);
 			
+			// wait for exec to load
 			sema_down(&thread_current()->waiting2);
-			//printf("child Load status:%s ", (thread_current()->childLoadStatus)? "true":"false");
 			if (thread_current()->childLoadStatus) {
 				f->eax = pid;
 			} else {
@@ -98,7 +100,10 @@ syscall_handler (struct intr_frame *f)
 		case SYS_WAIT:
 		{
 			tid_t pid = *arg1;
-			process_wait(&thread_current()->tid, pid);
+			int waitStatus = process_wait(pid);
+			
+			f->eax = waitStatus;
+			
 			break;
 		}
 		case SYS_CREATE:

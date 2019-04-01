@@ -33,6 +33,15 @@ struct fileListElem
 	struct list_elem elem;
 };
 
+
+// wrapper to store children and their exit status
+struct childListElem
+{
+	struct thread * t;
+	int exitStatus;
+	struct list_elem elem;
+};
+
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -102,8 +111,6 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 	
-	struct list_elem childListElem;
-	
     struct semaphore waiting;
 	struct semaphore waiting2;
     struct thread* parent;
@@ -111,7 +118,10 @@ struct thread
 	struct list fileList;
 	struct list childList;
 	
-	bool childLoadStatus;
+	bool childLoadStatus; // to return load status when we get exec sys call
+	bool isParentWaiting; // to know if we need to sema up on parent
+	
+	int exitStatus;
 	
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -143,7 +153,13 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 
+void thread_add_child(struct thread * parent, struct thread * child);
+void thread_do_child_dying (struct thread * parent, struct thread* child);
+
 void thread_exit (void) NO_RETURN;
+
+
+
 void thread_yield (void);
 void thread_yield_for_seconds(int64_t end);
 

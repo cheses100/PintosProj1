@@ -237,6 +237,8 @@ thread_create_with_parent (struct thread * parent, const char *name, int priorit
   kf->function = function;
   kf->aux = aux;
 
+  thread_add_child(t->parent, t);
+  
   /* Stack frame for switch_entry(). */
   ef = alloc_frame (t, sizeof *ef);
   ef->eip = (void (*) (void)) kernel_thread;
@@ -245,7 +247,7 @@ thread_create_with_parent (struct thread * parent, const char *name, int priorit
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
+  
   /* Add to run queue. */
   thread_unblock (t);
 
@@ -323,6 +325,34 @@ thread_tid (void)
   return thread_current ()->tid;
 }
 
+void thread_add_child(struct thread* parent, struct thread * child)
+{
+	// push child to parents list ezpz
+	struct childListElem * newChild = malloc(sizeof(struct childListElem));
+	newChild->t = child;
+	newChild->exitStatus = -1;
+	
+	list_push_back(&parent->childList, &newChild->elem);
+}
+
+void thread_do_child_dying (struct thread * parent, struct thread * child)
+{ 
+	// get exit status of child and make thread NULL in list
+	
+	for (struct list_elem* e = list_begin (&parent->childList);
+		e != list_end (&parent->childList);
+		e = list_next (e))
+    {
+      struct childListElem *childElem = list_entry (e, struct childListElem, elem);
+      if (childElem->t != NULL && childElem->t->tid == child->tid) // tid found
+	  {
+		  ASSERT(childElem->t == child);
+		  childElem->exitStatus = child->exitStatus;
+		  childElem->t = NULL;
+	  }
+    }
+}
+
 /* Deschedules the current thread and destroys it.  Never
    returns to the caller. */
 void
@@ -340,9 +370,28 @@ thread_exit (void)
      when it calls thread_schedule_tail(). */
   intr_disable ();
   list_remove (&thread_current()->allelem);
-  if (thread_current()->parent != NULL)
-      sema_up(&thread_current()->parent->waiting);
-  thread_current ()->status = THREAD_DYING;
+  
+  struct thread * current = thread_current();
+  struct thread * parent = current->parent;
+  if (parent != NULL)
+  {
+	  thread_do_child_dying(parent, current);
+	  if (current->isParentWaiting) sema_up(&parent->waiting);
+  }
+  
+  struct list_elem* iter = list_begin (&current->childList);
+  while (iter != list_end (&current->childList))
+	{
+		struct list_elem* e = iter;
+		iter = list_next (iter);
+		struct childListElem *childElem = list_entry (e, struct childListElem, elem);
+	  
+		if (childElem->t != NULL) childElem->t->parent = NULL;
+		list_remove(&childElem->elem);
+		//free(childElem);
+	}
+	
+  current->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -524,6 +573,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->isParentWaiting = false;
+  t->childLoadStatus = false;
+  t->exitStatus = -1;
   list_init(&t->fileList);
   list_init(&t->childList);
   sema_init (&t->waiting, 0);
