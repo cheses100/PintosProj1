@@ -104,9 +104,9 @@ syscall_handler (struct intr_frame *f)
 			}
 			printf("%s: exit(%d)\n", thread_current()->name, status);
 			thread_current()->exitStatus = status;
-
+            f->eax = status;
 			thread_exit();
-			f->eax = status;
+			
 			break;
 		}
 		case SYS_EXEC:
