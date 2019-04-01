@@ -99,12 +99,10 @@ thread_init (void)
   list_init(&sleep_list);
   list_init (&ready_list);
   list_init (&all_list);
-  //sema_init (&running_thread()->waiting, 0);
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
-  sema_init (&running_thread()->waiting, 0);
   initial_thread->tid = allocate_tid ();
 }
 
@@ -520,14 +518,18 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
-
+  
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  list_init(&t->fileList);
+  list_init(&t->childList);
+  sema_init (&t->waiting, 0);
+  sema_init (&t->waiting2, 0);
   t->magic = THREAD_MAGIC;
-
+  
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);

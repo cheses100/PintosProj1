@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+typedef int tid_t;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, char* full_name, void (**eip) (void), void **esp);
 
@@ -76,7 +77,9 @@ start_process (void *file_name_)
   char* real_name = strtok_r(fn_copy, " ", &ptr);
 
   success = load (real_name, file_name, &if_.eip, &if_.esp);
-
+  thread_current()->parent->childLoadStatus = success;
+  if (success) list_push_back(&thread_current()->parent->childList, &thread_current()->parent->childListElem);
+  sema_up(&thread_current()->parent->waiting2);
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 

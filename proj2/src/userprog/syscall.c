@@ -10,6 +10,13 @@
 
 static void syscall_handler (struct intr_frame *);
 int write(int fd, const void* buffer, unsigned size);
+bool addressCheck(void * adr);
+
+int argCounts[] = {
+	0, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 1
+};
+
+int fdCounter = 5;
 
 void
 syscall_init (void) 
@@ -17,15 +24,21 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static bool addressCheck(void* adr)
+bool addressCheck(void* adr)
 {
-	bool invalidAddress = (
-		(adr == NULL) ||
-		!is_user_vaddr(adr) ||
-		(pagedir_get_page(active_pd(), adr) == NULL)
+	bool validAddress = (
+		(adr != NULL) &&
+		is_user_vaddr(adr) &&
+		(pagedir_get_page(thread_current()->pagedir, adr) != NULL)
 		);
 		
-	return !invalidAddress;
+	return validAddress;
+}
+
+void doBadExit()
+{
+	printf("%s: exit(-1)\n", thread_current()->name);
+	thread_exit();
 }
 
 
@@ -34,12 +47,19 @@ syscall_handler (struct intr_frame *f)
 {
 	//cast f->esp into an int*, then dereference it for the SYS_CODE
 	int * sysCodeStar = (int*)f->esp;
+	int * arg1 = sysCodeStar + 1;
+	int * arg2 = sysCodeStar + 2;
+	int * arg3 = sysCodeStar + 3;
   
-	if (!addressCheck(f->esp))
+	if (!addressCheck(f->esp)) doBadExit();
+	
+	if (*sysCodeStar < 0 || *sysCodeStar > 12) doBadExit();
+	
+	int * tempArg = arg1;
+	for (int i = 0; i < argCounts[*sysCodeStar]; i++) 
 	{
-		printf("%s: exit(-1)\n", thread_current()->name);
-		
-		thread_exit();
+		if (!addressCheck(tempArg)) doBadExit();
+		tempArg++;
 	}
 	
 	switch(*sysCodeStar)
@@ -52,31 +72,40 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_EXIT:
 		{
-			printf("%s: exit(0)\n", thread_current()->name);
+			int status = *arg1;
+			
+			printf("%s: exit(%d)\n", thread_current()->name, status);
 			thread_exit();
 			break;
 		}
 		case SYS_EXEC:
 		{
+			const char * execArgs = (const char *)(*arg1);
+			
+			if (!addressCheck(execArgs)) doBadExit();
+			int pid = process_execute(execArgs);
+			
+			sema_down(&thread_current()->waiting2);
+			//printf("child Load status:%s ", (thread_current()->childLoadStatus)? "true":"false");
+			if (thread_current()->childLoadStatus) {
+				f->eax = pid;
+			} else {
+				f->eax = -1;
+			}
 			
 			break;
 		}
 		case SYS_WAIT:
 		{
-			
+			tid_t pid = *arg1;
+			process_wait(&thread_current()->tid, pid);
 			break;
 		}
 		case SYS_CREATE:
 		{
-			char* fileName = (char*)(*(sysCodeStar + 1));
-			
-			if(!addressCheck(fileName))
-			{
-				printf("%s: exit(-1)\n", thread_current()->name);
-			}
-			unsigned size = *((unsigned*)sysCodeStar + 2);
-			//run the syscall, a function of your own making
-			//since this syscall returns a value, the return value should be
+			char * fileName= (char*)(*arg1);
+			int size = *arg2;
+			if(!addressCheck(fileName)) doBadExit();
 			
 			bool fileCreated = filesys_create(fileName, size);
 			
@@ -85,12 +114,22 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_REMOVE:
 		{
+			char * fileName= (char*)(*arg1);
+			if(!addressCheck(fileName)) doBadExit();
 			
+			bool fileRemoved = filesys_remove(fileName);
+			
+			f->eax = fileRemoved;
 			break;
 		}
 		case SYS_OPEN:
 		{
+			char * fileName= (char*)(*arg1);
+			if(!addressCheck(fileName)) doBadExit();
 			
+			void * file = filesys_open(fileName);
+			
+			f->eax = (file == NULL) ? -1 : fdCounter++;
 			break;
 		}
 		case SYS_FILESIZE:
@@ -105,17 +144,12 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_WRITE:
 		{
-			int fd = *(sysCodeStar + 1);
-			void* buffer = (void*)(*(sysCodeStar + 2));
+			int fd = *arg1;
+			void* buffer = (void*)(*arg2);
+			unsigned size = *(unsigned*)arg3;
 			
-			if(!addressCheck(buffer))
-			{
-				printf("%s: exit(-1)\n", thread_current()->name);
-			}
-			unsigned size = *((unsigned*)sysCodeStar + 3);
-			//run the syscall, a function of your own making
-			//since this syscall returns a value, the return value should be
-			//stored in f->eax
+			if(!addressCheck(buffer)) doBadExit();
+			
 			f->eax = write(fd, buffer, size);
 			
 			break;
@@ -137,15 +171,7 @@ syscall_handler (struct intr_frame *f)
 		}
 	}
 	
-	//*/
-	
-	
-	
-	
-	
-	/*
-	
-	}*/
+
 }
 
 int write(int fd, const void* buffer, unsigned size)
