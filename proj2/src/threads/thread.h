@@ -111,6 +111,8 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 	
+	struct list_elem childListElem;
+	
     struct semaphore waiting;
 	struct semaphore waiting2;
     struct thread* parent;
@@ -122,6 +124,7 @@ struct thread
 	bool isParentWaiting; // to know if we need to sema up on parent
 	
 	int exitStatus;
+	int fdCounter;
 	
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

@@ -7,16 +7,18 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
+#include "filesys/file.h"
+#include "devices/input.h"
 
 static void syscall_handler (struct intr_frame *);
-int write(int fd, const void* buffer, unsigned size);
+int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem);
 bool addressCheck(void * adr);
 
 int argCounts[] = {
 	0, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 1
 };
 
-int fdCounter = 5;
+
 
 void
 syscall_init (void) 
@@ -41,6 +43,21 @@ void doBadExit()
 	thread_exit();
 }
 
+//I added this
+struct fileListElem * getFileWithFd(int fd) 
+{
+	for (struct list_elem* iter = list_begin(&thread_current()->fileList);
+	 iter != list_end(&thread_current()->fileList);iter = list_next(iter))
+	{
+	  	struct fileListElem* fileEl = list_entry(iter, struct fileListElem, elem);
+	  	 //printf("________\n\n\nfileEl->fd: %d\nfd: %d\n\n________\n", fileEl->fd, fd);
+	  	if (fileEl->fd == fd) {
+	  		return fileEl;
+	  	}
+	  	
+  	}
+  	return NULL;
+}
 
 static void
 syscall_handler (struct intr_frame *f) 
@@ -129,49 +146,103 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_OPEN:
 		{
+			//I aded this
 			char * fileName= (char*)(*arg1);
 			if(!addressCheck(fileName)) doBadExit();
 			
-			void * file = filesys_open(fileName);
+			void * newfile = filesys_open(fileName);
+			if (newfile != NULL) {
+				//TODO remember to free this later
+				struct fileListElem* newElem = malloc(sizeof(struct fileListElem));
+				newElem->mFile = (struct file*)newfile;
+				newElem->fd = thread_current()->fdCounter;
+				list_push_back (&(thread_current()->fileList), &newElem->elem);
+			}
 			
-			f->eax = (file == NULL) ? -1 : fdCounter++;
+			f->eax = (newfile == NULL) ? -1 : thread_current()->fdCounter++;
 			break;
 		}
 		case SYS_FILESIZE:
 		{
-			
+			//I added this
+			int fd = *arg1;
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				doBadExit();
+			}
+			f->eax = file_length(curElem->mFile);
 			break;
 		}
 		case SYS_READ:
 		{
+			//I added this
+			int fd = *arg1;
+			void* buffer = (void*)(*arg2);
+			unsigned size = *(unsigned*)arg3;
+			if(!addressCheck(buffer)) doBadExit();
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				doBadExit();
+			}
 			
+			if (fd == 0) {
+				f->eax = input_getc();
+			} else {
+				f->eax = file_read(curElem->mFile, buffer, size);
+			}
+			
+
 			break;
 		}
 		case SYS_WRITE:
 		{
+			
 			int fd = *arg1;
 			void* buffer = (void*)(*arg2);
 			unsigned size = *(unsigned*)arg3;
 			
 			if(!addressCheck(buffer)) doBadExit();
-			
-			f->eax = write(fd, buffer, size);
+			//I added/modified this
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL && fd != STDOUT_FILENO) {
+				doBadExit();
+			}
+			f->eax = write(fd, buffer, size, curElem);
 			
 			break;
 		}
 		case SYS_SEEK:
 		{
-			
+			//I added this
+			int fd = *arg1;
+			unsigned position = *(unsigned*)arg2;
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				doBadExit();
+			}
+			file_seek(curElem->mFile, position);
 			break;
 		}
 		case SYS_TELL:
 		{
-			
+			//I added this
+			int fd = *arg1;
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				doBadExit();
+			}
+			f->eax = file_tell(curElem->mFile);
 			break;
 		}
 		case SYS_CLOSE:
 		{
-			
+			//i added this
+			int fd = *arg1;
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				doBadExit();
+			}
+			file_close (curElem->mFile);
 			break;
 		}
 	}
@@ -179,12 +250,19 @@ syscall_handler (struct intr_frame *f)
 
 }
 
-int write(int fd, const void* buffer, unsigned size)
+
+
+int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem )
 {
 	
-	
-	if (fd == STDOUT_FILENO) putbuf(buffer, size);
-	
+	//I added/modified this
+	if (fd == STDOUT_FILENO) {
+		putbuf(buffer, size);
+	} else if (fd == 0){
+		doBadExit();
+	} else {
+		size = file_write(elem->mFile, buffer, size);
+	}
 	
 	
 	return size;
