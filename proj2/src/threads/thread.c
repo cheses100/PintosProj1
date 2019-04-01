@@ -528,6 +528,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->childList);
   sema_init (&t->waiting, 0);
   sema_init (&t->waiting2, 0);
+  t->fdCounter = 5; // I added this
   t->magic = THREAD_MAGIC;
   
   old_level = intr_disable ();

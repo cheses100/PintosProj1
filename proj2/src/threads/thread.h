@@ -112,6 +112,7 @@ struct thread
 	struct list childList;
 	
 	bool childLoadStatus;
+  int fdCounter; //I added this
 	
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
