@@ -32,8 +32,7 @@ struct fileListElem
 	int fd;
 	struct list_elem elem;
 };
-struct semaphore writingSem;
-struct semaphore readingSem;
+
 // wrapper to store children and their exit status
 struct childListElem
 {

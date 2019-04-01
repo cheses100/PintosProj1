@@ -103,8 +103,7 @@ thread_init (void)
   list_init(&sleep_list);
   list_init (&ready_list);
   list_init (&all_list);
-  sema_init(&writingSem, 1);
-  sema_init(&readingSem, 1);
+  
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
