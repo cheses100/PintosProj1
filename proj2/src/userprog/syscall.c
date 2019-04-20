@@ -290,6 +290,7 @@ syscall_handler (struct intr_frame *f)
 			}
 			file_close (curElem->mFile);
 			list_remove (&curElem->elem);
+			free(curElem);
 			sema_up(&IOLock);
 			break;
 		}
