@@ -197,6 +197,7 @@ page_fault (struct intr_frame *f)
 		//printf("\n\n%d", status);
 		kill (f);
 	} else {
+		printf("Growing stack");
 		void* upage = pg_round_down(fault_addr);
 		void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 		bool writable = true;
