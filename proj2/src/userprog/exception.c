@@ -7,6 +7,10 @@
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 #include "threads/palloc.h"
+#include <stdlib.h>
+#include "threads/malloc.h"
+#include "devices/timer.h"
+#include "vm/frame.h"
 
 
 /* Number of page faults processed. */
@@ -197,11 +201,59 @@ page_fault (struct intr_frame *f)
 		//printf("\n\n%d", status);
 		kill (f);
 	} else {
+
+		//case 1: memory isn't full, page isnt in page table
+		//grab new page, create a pagetable entry, and create a frametable entry
+		//case 2: memory isn't full, page is in page table
+		//Can this happen? if it can, then swap the page back into memory
+		//case 3: memory is full, page is in page table 
+		//this means the page was swapped out of memory but already allocated before
+		//need to take a page from memory and put it on the disk
+		//and then find this page in disk and load it into memory
+		//then update the frame table to show new page is now in physical memory
+		//case 4: memory is full, page isnt in the page table
+		//evict some page in memory to hard drive. Create new page table entry
+		//update frame table try
 		void* upage = pg_round_down(fault_addr);
 		void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 		bool writable = true;
+		//if this returns false, it means we ran out of physical memory
+		//for now panic the kernal
+		//later, swap memory out, and swap this memory in
 		bool success = install_page(upage, kpage, writable);
-		//printf("%d", success);
+		if (!success) {
+			intr_dump_frame (f);
+	 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
+		}
+
+		//check pagetable of current thread to see if the page is in the table already
+		for (struct list_elem* iter = list_begin(&thread_current()->page_table);
+		iter != list_end(&thread_current()->page_table);
+		iter = list_next(iter))
+		{
+			struct sup_page_table_entry * page_table_elem = list_entry(iter, struct sup_page_table_entry, elem);
+			
+		}
+		//if it is, that means it was evicted and needs to be brought back in
+		//TODO figure this out once swap table is set up
+		//if it's not:
+		//get a new page, allocate new frametable entry, create pagetable enty to track this
+		//create pagetable entry
+		struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
+		newElem->uservaddr = upage;
+		newElem->dirty = false;
+		newElem->access_time = timer_ticks();
+		newElem->accessed = true;
+		list_push_back (&(thread_current()->page_table), &newElem->elem);
+
+		//create frametable entry
+		struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
+		newFrameElem->frame = kpage;
+		newFrameElem->owner = thread_current();
+		newFrameElem->aux = newElem;
+		list_push_back (&frame_table, &newFrameElem->elem);
+
+	    //printf("%d", success);
 	}
 	
 

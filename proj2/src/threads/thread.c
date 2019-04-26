@@ -10,8 +10,10 @@
 #include "threads/palloc.h"
 #include "threads/switch.h"
 #include "devices/timer.h"
-
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "threads/malloc.h"
+#include "filesys/file.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -103,6 +105,7 @@ thread_init (void)
   list_init(&sleep_list);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init (&frame_table);
   
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -600,6 +603,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->exitStatus = -1;
   t->mFile = NULL;
   list_init(&t->fileList);
+  list_init(&t->page_table);
   list_init(&t->childList);
   sema_init (&t->waiting, 0);
   sema_init (&t->waiting2, 0);

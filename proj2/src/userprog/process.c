@@ -17,6 +17,9 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "devices/timer.h"
+#include "threads/malloc.h"
 
 typedef int tid_t;
 static thread_func start_process NO_RETURN;
@@ -446,6 +449,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 
       /* Get a page of memory. */
       uint8_t *kpage = palloc_get_page (PAL_USER);
+      
+      
       if (kpage == NULL)
         return false;
 
@@ -463,6 +468,23 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false; 
         }
+      //possibly need to handle if yiou run out of memory
+
+      //create pagetable entry
+      struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
+      newElem->uservaddr = (uint32_t*)upage;
+      newElem->dirty = false;
+      newElem->access_time = timer_ticks();
+      newElem->accessed = true;
+      list_push_back (&(thread_current()->page_table), &newElem->elem);
+
+      //create frametable entry
+      struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
+      newFrameElem->frame = (uint32_t*)kpage;
+      newFrameElem->owner = thread_current();
+      newFrameElem->aux = newElem;
+      list_push_back (&(frame_table), &newFrameElem->elem);
+
 
       /* Advance. */
       read_bytes -= page_read_bytes;

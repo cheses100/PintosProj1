@@ -112,6 +112,7 @@ struct thread
     struct list_elem elem;              /* List element. */
 	
 	struct list_elem childListElem;
+
 	
     struct semaphore waiting;
 	struct semaphore waiting2;
@@ -119,6 +120,7 @@ struct thread
 	
 	struct list fileList;
 	struct list childList;
+  struct list page_table;
 
   struct file * mFile;
 	
