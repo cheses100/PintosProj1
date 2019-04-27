@@ -15,8 +15,8 @@
 
 static void syscall_handler (struct intr_frame *);
 int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem);
-bool addressCheck(void * adr);
-
+bool addressCheck(const void * adr);
+struct fileListElem* getFileWithFd(int fd);
 
 
 int argCounts[] = {
@@ -32,7 +32,7 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-bool addressCheck(void* adr)
+bool addressCheck(const void* adr)
 {
 	bool validAddress = (
 		(adr != NULL) &&
@@ -84,7 +84,7 @@ syscall_handler (struct intr_frame *f)
 		if (!addressCheck(tempArg)) doBadExit();
 		tempArg++;
 	}
-	
+	thread_current()->saved_esp = f->esp;
 	switch(*sysCodeStar)
 	{
 		case SYS_HALT:

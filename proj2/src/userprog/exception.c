@@ -167,7 +167,7 @@ page_fault (struct intr_frame *f)
 	status = 1;
   }
   //check if user tried to access kernel address
-  else if (is_kernel_vaddr(fault_addr)) {
+  else if (is_kernel_vaddr(fault_addr) && user) {
 	quit = true;
 	status = 2;
   }
@@ -178,20 +178,22 @@ page_fault (struct intr_frame *f)
   }
   //check if the address is a reasonable distance from the current user stack pointer
   //printf("%x", f->esp);
-  else if (fault_addr < (f->esp - 32)) {
+  else if (fault_addr < (thread_current()->saved_esp - 32) && user) {
 	quit = true;
 	//printf("\n\n\n%x, %x, %u\n\n\n", fault_addr, f->esp, (unsigned int)(f->esp - fault_addr));
 	status = 4;
   }
-  else if (!not_present) {
+  else if (!not_present && !user) {
   	quit = true;
   	status = 5;
+  	printf("%s: exit(-1)\n", thread_current()->name);
+	thread_exit (); 
+  } else if (!not_present){
+  	quit = true;
+  	status = 6;
   }
 
 
-  /* To implement virtual memory, delete the rest of the function
-	 body, and replace it with code that brings in the page to
-	 which fault_addr refers. */
 	if(quit) {
 		printf ("Page fault at %p: %s error %s page in %s context.\n",
 			  fault_addr,
@@ -214,44 +216,57 @@ page_fault (struct intr_frame *f)
 		//case 4: memory is full, page isnt in the page table
 		//evict some page in memory to hard drive. Create new page table entry
 		//update frame table try
+		
 		void* upage = pg_round_down(fault_addr);
-		void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
-		bool writable = true;
-		//if this returns false, it means we ran out of physical memory
-		//for now panic the kernal
-		//later, swap memory out, and swap this memory in
-		bool success = install_page(upage, kpage, writable);
-		if (!success) {
-			intr_dump_frame (f);
-	 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
-		}
-
+		bool found_page = false;
 		//check pagetable of current thread to see if the page is in the table already
 		for (struct list_elem* iter = list_begin(&thread_current()->page_table);
 		iter != list_end(&thread_current()->page_table);
 		iter = list_next(iter))
 		{
 			struct sup_page_table_entry * page_table_elem = list_entry(iter, struct sup_page_table_entry, elem);
-			
+			if (page_table_elem->uservaddr == upage) {
+				found_page = true;
+			}
 		}
 		//if it is, that means it was evicted and needs to be brought back in
-		//TODO figure this out once swap table is set up
-		//if it's not:
-		//get a new page, allocate new frametable entry, create pagetable enty to track this
-		//create pagetable entry
-		struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
-		newElem->uservaddr = upage;
-		newElem->dirty = false;
-		newElem->access_time = timer_ticks();
-		newElem->accessed = true;
-		list_push_back (&(thread_current()->page_table), &newElem->elem);
+		if (found_page) {
+			//TODO figure this out once swap table is set up
+		} else {
+			
+			void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
+			if(kpage == NULL) {
+				intr_dump_frame (f);
+		 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
+			}
+			bool writable = true;
+			//if this returns false, it means we ran out of physical memory
+			//for now panic the kernal
+			//later, swap memory out, and swap this memory in
+			bool success = install_page(upage, kpage, writable);
+			if (!success) {
+				intr_dump_frame (f);
+		 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
+			}
+			//if it's not:
+			//get a new page, allocate new frametable entry, create pagetable enty to track this
+			//create pagetable entry
+			struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
+			newElem->uservaddr = upage;
+			newElem->dirty = false;
+			newElem->access_time = timer_ticks();
+			newElem->accessed = true;
+			list_push_back (&(thread_current()->page_table), &newElem->elem);
 
-		//create frametable entry
-		struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
-		newFrameElem->frame = kpage;
-		newFrameElem->owner = thread_current();
-		newFrameElem->aux = newElem;
-		list_push_back (&frame_table, &newFrameElem->elem);
+			//create frametable entry
+			struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
+			newFrameElem->frame = kpage;
+			newFrameElem->owner = thread_current();
+			newFrameElem->aux = newElem;
+			list_push_back (&frame_table, &newFrameElem->elem);
+		}
+		
+		
 
 	    //printf("%d", success);
 	}

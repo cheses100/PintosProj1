@@ -129,6 +129,7 @@ struct thread
 	
 	int exitStatus;
 	int fdCounter;
+  void *saved_esp; 
 	
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
