@@ -132,7 +132,7 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
-
+//printf("page faulting!!\n");
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
@@ -158,7 +158,10 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  
+  void* esp = f->esp;
+  if (!user) {
+  	esp = thread_current()->saved_esp;
+  }
   //fault_addr = pg_round_down(fault_addr);
   bool quit = false;
   int status = 0;
@@ -181,7 +184,7 @@ page_fault (struct intr_frame *f)
   }
   //check if the address is a reasonable distance from the current user stack pointer
   
-  else if (fault_addr < (f->esp  - 32) && user) {
+  else if (fault_addr < (esp - 32) && user) {
 	quit = true;
 	//printf("\n2\n\n%x, %x, %u, %x\n\n\n", fault_addr, thread_current()->saved_esp, (unsigned int)(thread_current()->saved_esp - fault_addr), f->esp);
 	status = 4;
@@ -242,6 +245,8 @@ page_fault (struct intr_frame *f)
 			//swap page into recently freed spot
 			//update frametable
 		} else {
+			//printf("Extending stack\n");
+			//printf("\n%x\n", pg_round_up(upage));
 			void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 			if(kpage == NULL) {
 				intr_dump_frame (f);

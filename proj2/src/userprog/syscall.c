@@ -43,9 +43,28 @@ bool addressCheck(const void* adr)
 		is_user_vaddr(adr) &&
 		(pagedir_get_page(thread_current()->pagedir, adr) != NULL)
 		);
-	
+	// if(pagedir_get_page(thread_current()->pagedir, adr) == NULL) {
+	// 	//printf("pagedir get page failed for: %x", adr);
+	// }
 		
 	return validAddress;
+	
+	
+}
+
+bool addressCheckWithEsp(const void* adr, void* esp)
+{
+	bool validAddress = (
+		adr != NULL &&
+		((is_user_vaddr(adr) &&	pagedir_get_page(thread_current()->pagedir, adr != NULL))
+		|| adr >= (esp - 32))
+		);
+	// if(pagedir_get_page(thread_current()->pagedir, adr) == NULL) {
+	// 	//printf("pagedir get page failed for: %x", adr);
+	// }
+		
+	return validAddress;
+	
 	
 }
 
@@ -90,7 +109,7 @@ syscall_handler (struct intr_frame *f)
 		if (!addressCheck(tempArg)) doBadExit();
 		tempArg++;
 	}
-	//thread_current()->saved_esp = f->esp;
+	thread_current()->saved_esp = f->esp;
 	switch(*sysCodeStar)
 	{
 		case SYS_HALT:
@@ -146,6 +165,7 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_CREATE:
 		{
+			//printf("creating file\n");
 			sema_down(&IOLock);
 			char * fileName= (char*)(*arg1);
 			int size = *arg2;
@@ -177,6 +197,7 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_OPEN:
 		{
+			//printf("openning file\n");
 			sema_down(&IOLock);
 			//I aded this
 			char * fileName= (char*)(*arg1);
@@ -216,11 +237,55 @@ syscall_handler (struct intr_frame *f)
 		case SYS_READ:
 		{
 			//I added this
+			//printf("reading \n");
 			sema_down(&IOLock);
 			int fd = *arg1;
 			void* buffer = (void*)(*arg2);
 			unsigned size = *(unsigned*)arg3;
-			if(!addressCheck(buffer)) doBadExit();
+			if (!((buffer != NULL) && is_user_vaddr(buffer))) {
+				doBadExit();
+			}
+			if(!addressCheck(buffer))  {
+				//printf("buffer: %x", buffer);
+				void* upage = pg_round_down(buffer);
+				if (buffer >= (f->esp - 32)) {
+
+
+					void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
+					if(kpage == NULL) {
+						intr_dump_frame (f);
+				 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
+				 		//pick page to swap out of memory based on lru
+				 		//swap it out
+				 		//grab the piece of memory where that page was, and put in new page
+				 		//update page table
+				 		//update frame table
+					}
+					bool writable = true;
+					//if this returns false, it means we ran out of physical memory
+					//for now panic the kernal
+					//later, swap memory out, and swap this memory in
+					bool success = install_page(upage, kpage, writable);
+					if (!success) {
+						//not sure what we need to do about this
+						intr_dump_frame (f);
+				 		PANIC ("There's already a page at this virtual address"); 
+					} else {
+						//if it's not:
+						//get a new page, allocate new frametable entry, create pagetable enty to track this
+						//create pagetable entry
+						struct sup_page_table_entry* new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);
+						
+
+						//create frametable entry
+						struct frame_table_entry* ftable_entry = frame_table_insert(kpage, thread_current(), new_elem);
+					}
+				} else{
+					doBadExit();	
+				}
+				//printf("this is what fails");
+				
+			}
 			struct fileListElem* curElem = getFileWithFd(fd);
 			if (curElem == NULL) {
 				sema_up(&IOLock);
@@ -239,7 +304,7 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_WRITE:
 		{
-			
+			//printf("writing file\n");
 			int fd = *arg1;
 			void* buffer = (void*)(*arg2);
 			unsigned size = *(unsigned*)arg3;
