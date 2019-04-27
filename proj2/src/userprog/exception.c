@@ -256,6 +256,7 @@ page_fault (struct intr_frame *f)
 		 		//grab the piece of memory where that page was, and put in new page
 		 		//update page table
 		 		//update frame table
+		 		
 			}
 			bool writable = true;
 			//if this returns false, it means we ran out of physical memory

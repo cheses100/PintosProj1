@@ -250,7 +250,6 @@ syscall_handler (struct intr_frame *f)
 				void* upage = pg_round_down(buffer);
 				if (buffer >= (f->esp - 32)) {
 
-
 					void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 					if(kpage == NULL) {
 						intr_dump_frame (f);
