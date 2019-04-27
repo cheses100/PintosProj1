@@ -198,7 +198,7 @@ process_exit (void)
 
 /* Sets up the CPU for running user code in the current
    thread.
-   This function is called on every context switch. */
+   This function is called on every context switch. */ 
 void
 process_activate (void)
 {
@@ -505,7 +505,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       //possibly need to handle if yiou run out of memory
 
 
-        
+
 
       struct sup_page_table_entry* new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);
         
