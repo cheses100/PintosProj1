@@ -504,20 +504,15 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         }
       //possibly need to handle if yiou run out of memory
 
-      //create pagetable entry
-      struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
-      newElem->uservaddr = (uint32_t*)upage;
-      newElem->dirty = false;
-      newElem->access_time = timer_ticks();
-      newElem->accessed = true;
-      list_push_back (&(thread_current()->page_table), &newElem->elem);
 
-      //create frametable entry
-      struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
-      newFrameElem->frame = (uint32_t*)kpage;
-      newFrameElem->owner = thread_current();
-      newFrameElem->aux = newElem;
-      list_push_back (&(frame_table), &newFrameElem->elem);
+
+
+      struct sup_page_table_entry* new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);
+        
+
+        //create frametable entry
+      struct frame_table_entry* ftable_entry = frame_table_insert(kpage, thread_current(), new_elem);
+      
 
 
       /* Advance. */

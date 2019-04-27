@@ -11,8 +11,7 @@
 #include "threads/malloc.h"
 #include "devices/timer.h"
 #include "vm/frame.h"
-
-
+#include "devices/block.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -243,7 +242,6 @@ page_fault (struct intr_frame *f)
 			//swap page into recently freed spot
 			//update frametable
 		} else {
-			
 			void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 			if(kpage == NULL) {
 				intr_dump_frame (f);
@@ -267,19 +265,11 @@ page_fault (struct intr_frame *f)
 				//if it's not:
 				//get a new page, allocate new frametable entry, create pagetable enty to track this
 				//create pagetable entry
-				struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
-				newElem->uservaddr = upage;
-				newElem->dirty = false;
-				newElem->access_time = timer_ticks();
-				newElem->accessed = true;
-				list_push_back (&(thread_current()->page_table), &newElem->elem);
+				struct sup_page_table_entry* new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);
+				
 
 				//create frametable entry
-				struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
-				newFrameElem->frame = kpage;
-				newFrameElem->owner = thread_current();
-				newFrameElem->aux = newElem;
-				list_push_back (&frame_table, &newFrameElem->elem);
+				struct frame_table_entry* ftable_entry = frame_table_insert(kpage, thread_current(), new_elem);
 			}
 				
 		}

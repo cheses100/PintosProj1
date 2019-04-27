@@ -14,6 +14,7 @@
 #include "vm/frame.h"
 #include "threads/malloc.h"
 #include "filesys/file.h"
+#include "vm/swap.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -107,6 +108,7 @@ thread_init (void)
   list_init (&all_list);
   list_init (&frame_table);
   
+  swap_init();
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);

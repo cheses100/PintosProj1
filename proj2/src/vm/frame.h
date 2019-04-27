@@ -13,3 +13,5 @@ struct frame_table_entry {
 	struct sup_page_table_entry* aux;
 	struct list_elem elem;
 };
+
+struct frame_table_entry* frame_table_insert(uint32_t* frame, struct thread* owner, struct sup_page_table_entry* aux);
