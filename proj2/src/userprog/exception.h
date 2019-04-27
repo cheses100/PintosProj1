@@ -8,5 +8,6 @@
 
 void exception_init (void);
 void exception_print_stats (void);
+struct semaphore exception_lock;
 
 #endif /* userprog/exception.h */

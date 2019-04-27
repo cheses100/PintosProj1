@@ -66,6 +66,7 @@ exception_init (void)
 	 We need to disable interrupts for page faults because the
 	 fault address is stored in CR2 and needs to be preserved. */
   intr_register_int (14, 0, INTR_OFF, page_fault, "#PF Page-Fault Exception");
+  sema_init(&exception_lock, 1);
 }
 
 /* Prints exception statistics. */
@@ -132,6 +133,7 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
+
   bool not_present;  /* True: not-present page, false: writing r/o page. */
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
@@ -149,7 +151,7 @@ page_fault (struct intr_frame *f)
   /* Turn interrupts back on (they were only off so that we could
 	 be assured of reading CR2 before it changed). */
   intr_enable ();
-
+  sema_down(&exception_lock);
   /* Count page faults. */
   page_fault_cnt++;
 
@@ -162,6 +164,8 @@ page_fault (struct intr_frame *f)
   bool quit = false;
   int status = 0;
   //check if addr was null
+  //int curr_addr = thread_current()->saved_esp;
+  //printf("\n1\n\n%x, %x, %u, %x\n\n\n", fault_addr, thread_current()->saved_esp, (unsigned int)(thread_current()->saved_esp - fault_addr), f->esp);
   if (fault_addr == NULL) {
 	quit = true;
 	status = 1;
@@ -177,10 +181,10 @@ page_fault (struct intr_frame *f)
 	status = 3;
   }
   //check if the address is a reasonable distance from the current user stack pointer
-  //printf("%x", f->esp);
-  else if (fault_addr < (thread_current()->saved_esp - 32) && user) {
+  
+  else if (fault_addr < (f->esp  - 32) && user) {
 	quit = true;
-	//printf("\n\n\n%x, %x, %u\n\n\n", fault_addr, f->esp, (unsigned int)(f->esp - fault_addr));
+	//printf("\n2\n\n%x, %x, %u, %x\n\n\n", fault_addr, thread_current()->saved_esp, (unsigned int)(thread_current()->saved_esp - fault_addr), f->esp);
 	status = 4;
   }
   else if (!not_present && !user) {
@@ -219,6 +223,7 @@ page_fault (struct intr_frame *f)
 		
 		void* upage = pg_round_down(fault_addr);
 		bool found_page = false;
+		struct sup_page_table_entry* curr_page;
 		//check pagetable of current thread to see if the page is in the table already
 		for (struct list_elem* iter = list_begin(&thread_current()->page_table);
 		iter != list_end(&thread_current()->page_table);
@@ -227,17 +232,27 @@ page_fault (struct intr_frame *f)
 			struct sup_page_table_entry * page_table_elem = list_entry(iter, struct sup_page_table_entry, elem);
 			if (page_table_elem->uservaddr == upage) {
 				found_page = true;
+				curr_page = page_table_elem;
 			}
 		}
 		//if it is, that means it was evicted and needs to be brought back in
 		if (found_page) {
 			//TODO figure this out once swap table is set up
+			//find page in memory
+			//swap out page based on lru
+			//swap page into recently freed spot
+			//update frametable
 		} else {
 			
 			void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 			if(kpage == NULL) {
 				intr_dump_frame (f);
 		 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
+		 		//pick page to swap out of memory based on lru
+		 		//swap it out
+		 		//grab the piece of memory where that page was, and put in new page
+		 		//update page table
+		 		//update frame table
 			}
 			bool writable = true;
 			//if this returns false, it means we ran out of physical memory
@@ -245,32 +260,36 @@ page_fault (struct intr_frame *f)
 			//later, swap memory out, and swap this memory in
 			bool success = install_page(upage, kpage, writable);
 			if (!success) {
+				//not sure what we need to do about this
 				intr_dump_frame (f);
-		 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
-			}
-			//if it's not:
-			//get a new page, allocate new frametable entry, create pagetable enty to track this
-			//create pagetable entry
-			struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
-			newElem->uservaddr = upage;
-			newElem->dirty = false;
-			newElem->access_time = timer_ticks();
-			newElem->accessed = true;
-			list_push_back (&(thread_current()->page_table), &newElem->elem);
+		 		PANIC ("There's already a page at this virtual address"); 
+			} else {
+				//if it's not:
+				//get a new page, allocate new frametable entry, create pagetable enty to track this
+				//create pagetable entry
+				struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
+				newElem->uservaddr = upage;
+				newElem->dirty = false;
+				newElem->access_time = timer_ticks();
+				newElem->accessed = true;
+				list_push_back (&(thread_current()->page_table), &newElem->elem);
 
-			//create frametable entry
-			struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
-			newFrameElem->frame = kpage;
-			newFrameElem->owner = thread_current();
-			newFrameElem->aux = newElem;
-			list_push_back (&frame_table, &newFrameElem->elem);
+				//create frametable entry
+				struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
+				newFrameElem->frame = kpage;
+				newFrameElem->owner = thread_current();
+				newFrameElem->aux = newElem;
+				list_push_back (&frame_table, &newFrameElem->elem);
+			}
+				
 		}
 		
 		
 
 	    //printf("%d", success);
 	}
+	sema_up(&exception_lock);
 	
-
+	intr_enable ();
 }
 

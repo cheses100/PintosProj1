@@ -147,19 +147,53 @@ process_exit (void)
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
+
   if (pd != NULL) 
-    {
-      /* Correct ordering here is crucial.  We must set
-         cur->pagedir to NULL before switching page directories,
-         so that a timer interrupt can't switch back to the
-         process page directory.  We must activate the base page
-         directory before destroying the process's page
-         directory, or our active page directory will be one
-         that's been freed (and cleared). */
-      cur->pagedir = NULL;
-      pagedir_activate (NULL);
-      pagedir_destroy (pd);
+  {
+    /* Correct ordering here is crucial.  We must set
+       cur->pagedir to NULL before switching page directories,
+       so that a timer interrupt can't switch back to the
+       process page directory.  We must activate the base page
+       directory before destroying the process's page
+       directory, or our active page directory will be one
+       that's been freed (and cleared). */
+    cur->pagedir = NULL;
+    pagedir_activate (NULL);
+    pagedir_destroy (pd);
+  }
+
+
+
+
+  //find all frame_table_entries associated with this process and free them up
+  //delete process's page table and page table entries
+  // for (struct list_elem* iter = list_begin(&frame_table);
+  // iter != list_end(&frame_table);
+  // iter = list_next(iter))
+  // {
+  //   struct frame_table_entry * frame_table_elem = list_entry(iter, struct frame_table_entry, elem);
+  //   //free(frame_table_elem);
+  // }
+    // for (struct list_elem* iter = list_begin(&thread_current()->page_table);
+    // iter != list_end(&thread_current()->page_table);
+    // iter = list_next(iter))
+    // {
+    //   struct sup_page_table_entry * page_table_elem = list_entry(iter, struct sup_page_table_entry, elem);
+    //   free(page_table_elem);
+    // }
+  for (struct list_elem* iter = list_begin(&frame_table);
+    iter != list_end(&frame_table);
+    iter = list_next(iter))
+    { struct frame_table_entry * frame_table_elem = list_entry(iter, struct frame_table_entry, elem);
+      if (frame_table_elem->owner == cur) {
+       //palloc_free_page(frame_table_elem->frame);
+       list_remove(iter);
+      }
+      
+
     }
+
+
 }
 
 /* Sets up the CPU for running user code in the current

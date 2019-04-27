@@ -13,6 +13,9 @@
 #include "devices/shutdown.h"
 #include "userprog/process.h"
 
+
+
+
 static void syscall_handler (struct intr_frame *);
 int write(int fd, const void* buffer, unsigned size, struct fileListElem* elem);
 bool addressCheck(const void * adr);
@@ -20,7 +23,7 @@ struct fileListElem* getFileWithFd(int fd);
 
 
 int argCounts[] = {
-	0, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 1
+	0, 1, 1, 1, 1, 1, 1, 1, 3, 3, 2, 1, 1, 2, 1
 };
 
 
@@ -84,7 +87,7 @@ syscall_handler (struct intr_frame *f)
 		if (!addressCheck(tempArg)) doBadExit();
 		tempArg++;
 	}
-	thread_current()->saved_esp = f->esp;
+	//thread_current()->saved_esp = f->esp;
 	switch(*sysCodeStar)
 	{
 		case SYS_HALT:
@@ -294,6 +297,35 @@ syscall_handler (struct intr_frame *f)
 			file_close (curElem->mFile);
 			list_remove (&curElem->elem);
 			free(curElem);
+			sema_up(&IOLock);
+			break;
+		}
+		case SYS_MMAP:
+		{
+			sema_down(&IOLock);
+			//int fd, void *addr
+			int fd = *arg1;
+			void* addr = (void*) arg2;
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				sema_up(&IOLock);
+				doBadExit();
+			}
+			struct file* fresh_file = file_reopen(curElem->mFile);
+			if (fresh_file == NULL) {
+				sema_up(&IOLock);
+				doBadExit();
+			}
+			
+			uint32_t length = file_length(fresh_file);
+			sema_up(&IOLock);
+			break;
+		}
+		case SYS_MUNMAP:
+		{
+			sema_down(&IOLock);
+			//mapid_t mapid
+			mapid_t mapid = *arg1;
 			sema_up(&IOLock);
 			break;
 		}
