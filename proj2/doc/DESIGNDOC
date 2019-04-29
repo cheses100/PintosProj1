@@ -30,19 +30,57 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+
+struct sup_page_table_entry { 
+	uint8_t* uservaddr; // uaddr (set once, never changed)
+	uint64_t access_time; // last access time
+	int block_index; // index in swap block
+	bool dirty;
+	bool accessed; 
+	struct list_elem elem;
+};
+
+struct list frame_table; // global frame table
+
+struct frame_table_entry {
+	uint8_t* frame; // vaddr
+	struct thread* owner; 
+	struct sup_page_table_entry* aux;
+	struct list_elem elem;
+};
+
+struct thread {
+	...
+
+	struct list page_table // this thread's sup page table entry list
+
+	...
+};
+
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for locating the frame,
 >> if any, that contains the data of a given page.
+The frames all point to the page that they hold. We loop through the frames
+until we find one that points to the page we're given. Once we find this we simply return it.
+
 
 >> A3: How does your code coordinate accessed and dirty bits between
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
+We have the frames point to the user address that's currently in it. Thus, if there
+was ever a case where a user address was switched out of memory and another one was 
+switched into the frame, the frame would point to the new one. When the old page 
+is attempted to be accessed by the user, this would page fault, so we know we need 
+to load in the page and update the frame table entry. 
 
 ---- SYNCHRONIZATION ----
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
+All of our code that allocates new frames is inside of a lock, so it can only 
+be run by one thread at a time.
 
 ---- RATIONALE ----
 
@@ -51,7 +89,9 @@ FirstName LastName <email@domain.example>
 
 		       PAGING TO AND FROM DISK
 		       =======================
-
+We chose them because the supplemental page table allowed us to keep a 
+structure similar to how the built in table already works, and the frame table 
+allowed us to keep track of how the actual data looks like in memory
 ---- DATA STRUCTURES ----
 
 >> B1: Copy here the declaration of each new or changed `struct' or
@@ -62,14 +102,19 @@ FirstName LastName <email@domain.example>
 
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
-
+We go through the frames, and lookup the page that they're holding. These
+pages each contain the time they were last accessed. We choose the frame that contains
+a page that was accessed the longest time ago, implementing an LRU algorithm.
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
-
+The page table doesn't change, but we update the frame in the frame table
+to now point to the new page in the page table
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+We chose 32 bytes because a PUSHA instruction can fault up to 32 bytes below
+the current address, so we know that anything below 32 bytes would be an invalid access.
 
 ---- SYNCHRONIZATION ----
 
@@ -77,23 +122,30 @@ FirstName LastName <email@domain.example>
 >> particular, explain how it prevents deadlock.  (Refer to the
 >> textbook for an explanation of the necessary conditions for
 >> deadlock.)
-
+We simply use a single lock for all of the operations, so only
+one process can be doing VM operations at a time. It prevents deadlock
+by only having one lock, so there's no case where one thread would be waiting
+for another threads lock while it has a lock that the other thread is also waiting for.
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
 >> the page during the eviction process?  How do you avoid a race
 >> between P evicting Q's frame and Q faulting the page back in?
-
+By having everything in the same lock. This way, only one thread can even run this code
+at a time.
 >> B7: Suppose a page fault in process P causes a page to be read from
 >> the file system or swap.  How do you ensure that a second process Q
 >> cannot interfere by e.g. attempting to evict the frame while it is
 >> still being read in?
-
+Again, we keep everything locked with a single lock, so there's no case where
+both threads can be doing these two things at the same time.
 >> B8: Explain how you handle access to paged-out pages that occur
 >> during system calls.  Do you use page faults to bring in pages (as
 >> in user programs), or do you have a mechanism for "locking" frames
 >> into physical memory, or do you use some other design?  How do you
 >> gracefully handle attempted accesses to invalid virtual addresses?
-
+We check during the page fault if the page in already in this threads page table.
+If it is in the page table, then we know we have to read it back in from the swap slot.
+attempted invalid virtual addresses cause the program to exit with -1
 ---- RATIONALE ----
 
 >> B9: A single lock for the whole VM system would make
@@ -102,6 +154,8 @@ FirstName LastName <email@domain.example>
 >> possibility for deadlock but allows for high parallelism.  Explain
 >> where your design falls along this continuum and why you chose to
 >> design it this way.
+We chose to stick with a single lock. We know it's not the best in terms of parallelism, but 
+it helps keep the assignment simple.
 
 			 MEMORY MAPPED FILES
 			 ===================
@@ -111,16 +165,19 @@ FirstName LastName <email@domain.example>
 >> C1: Copy here the declaration of each new or changed `struct' or
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
-
+NOT APPLICABLE
 ---- ALGORITHMS ----
 
 >> C2: Describe how memory mapped files integrate into your virtual
 >> memory subsystem.  Explain how the page fault and eviction
 >> processes differ between swap pages and other pages.
-
+We didn't get to this, but what we were planning on doing was having the memory mapped files
+be written back to file instead of to the swap page whenever theres a page fault.
 >> C3: Explain how you determine whether a new file mapping overlaps
 >> any existing segment.
-
+Again, we didn't get to this, but we would have created a data structure to keep track
+of where the files are in memory, and use this along with the page table to ensure that
+the new file mappings don't overlap.
 ---- RATIONALE ----
 
 >> C4: Mappings created with "mmap" have similar semantics to those of
@@ -129,7 +186,9 @@ FirstName LastName <email@domain.example>
 >> that much of their implementation can be shared.  Explain why your
 >> implementation either does or does not share much of the code for
 >> the two situations.
-
+We didn't get to this, but we would have used the code that swaps our pages 
+for data demand-paged from executables, and seperate code that writes back to the 
+file for the files.
 			   SURVEY QUESTIONS
 			   ================
 
