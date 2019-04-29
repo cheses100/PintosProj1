@@ -20,6 +20,7 @@
 #include "vm/frame.h"
 #include "devices/timer.h"
 #include "threads/malloc.h"
+#include "vm/swap.h"
 
 typedef int tid_t;
 static thread_func start_process NO_RETURN;
@@ -181,15 +182,15 @@ process_exit (void)
     //   struct sup_page_table_entry * page_table_elem = list_entry(iter, struct sup_page_table_entry, elem);
     //   free(page_table_elem);
     // }
-  // for (struct list_elem* iter = list_begin(&frame_table);
-  //   iter != list_end(&frame_table);
-  //   iter = list_next(iter))
-  //   { struct frame_table_entry * frame_table_elem = list_entry(iter, struct frame_table_entry, elem);
-  //     if (frame_table_elem->owner == cur) {
-  //      //palloc_free_page(frame_table_elem->frame);
-  //      list_remove(iter);
-  //     }
-      
+  for (struct list_elem* iter = list_begin(&frame_table);
+    iter != list_end(&frame_table);
+    iter = list_next(iter))
+    { struct frame_table_entry * frame_table_elem = list_entry(iter, struct frame_table_entry, elem);
+      if (frame_table_elem->owner == cur) {
+       //palloc_free_page(frame_table_elem->frame);
+       list_remove(iter);
+      }
+  }
 
   //   }
 
@@ -486,7 +487,17 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       
       
       if (kpage == NULL)
-        return false;
+      {
+        
+        if (!evict_frame()) return false;
+
+        kpage = palloc_get_page (PAL_USER);
+        if (kpage == NULL) {
+          return false;
+        }
+      }
+
+      //printf("loading from file\n");
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
@@ -494,18 +505,20 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
           palloc_free_page (kpage);
           return false; 
         }
+        //printf("memset\n");
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
+//printf("installing page\n");
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
+          //printf("install failed\n");
           palloc_free_page (kpage);
           return false; 
         }
       //possibly need to handle if yiou run out of memory
 
 
-
+        //printf("install sucesafed\n");
 
       struct sup_page_table_entry* new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);
         
@@ -514,7 +527,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       struct frame_table_entry* ftable_entry = frame_table_insert(kpage, thread_current(), new_elem);
       
 
-
+      //printf("table entries\n");
       /* Advance. */
       read_bytes -= page_read_bytes;
       zero_bytes -= page_zero_bytes;
@@ -531,7 +544,6 @@ setup_stack (void **esp, const char* file_name)
   uint8_t *kpage;
   bool success = false;
   char *fn_copy;
-
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
@@ -540,12 +552,30 @@ setup_stack (void **esp, const char* file_name)
         *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
+    } else {
+       if (!evict_frame()) return false;
+
+        kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+        if (kpage == NULL) {
+          return false;
+        }
+        success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+        if (success)
+          *esp = PHYS_BASE;
+        else
+          palloc_free_page (kpage);
+
     }
   //parse out filename
   //make a list with arguments in it
-  fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
+  fn_copy = palloc_get_page (PAL_USER);
+  if (fn_copy == NULL) {
+    //printf("evicting now\n");
+    if (!evict_frame()) return TID_ERROR;
+    fn_copy = palloc_get_page (PAL_USER);
+  }
+
+    
   strlcpy (fn_copy, file_name, PGSIZE);
   char* ptr;
   
@@ -608,7 +638,6 @@ setup_stack (void **esp, const char* file_name)
  /* printf("\n\n---HEX DUMP----\n");
 	hex_dump((uintptr_t)hexDump1Bottom - 32, hexDump1Bottom - 32, total_size + 32, true);
 	  printf("\n\n---HEX DUMP----\n"); */
-	
   return success;
 }
 

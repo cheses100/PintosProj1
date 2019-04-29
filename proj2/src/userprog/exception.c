@@ -12,6 +12,8 @@
 #include "devices/timer.h"
 #include "vm/frame.h"
 #include "devices/block.h"
+#include "vm/swap.h"
+#include "userprog/pagedir.h"
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
@@ -149,8 +151,8 @@ page_fault (struct intr_frame *f)
 
   /* Turn interrupts back on (they were only off so that we could
 	 be assured of reading CR2 before it changed). */
-  intr_enable ();
   sema_down(&exception_lock);
+  intr_enable ();
   /* Count page faults. */
   page_fault_cnt++;
 
@@ -184,11 +186,11 @@ page_fault (struct intr_frame *f)
   }
   //check if the address is a reasonable distance from the current user stack pointer
   
-  else if (fault_addr < (esp - 32) && user) {
-	quit = true;
-	//printf("\n2\n\n%x, %x, %u, %x\n\n\n", fault_addr, thread_current()->saved_esp, (unsigned int)(thread_current()->saved_esp - fault_addr), f->esp);
-	status = 4;
-  }
+ //  else if (fault_addr < (esp - 32) && user) {
+	// quit = true;
+	// printf("\n2\n\n%x, %x, %u\n\n\n", fault_addr, esp, (unsigned int)(esp- fault_addr));
+	// status = 4;
+ //  }
   else if (!not_present && !user) {
   	quit = true;
   	status = 5;
@@ -238,19 +240,31 @@ page_fault (struct intr_frame *f)
 			}
 		}
 		//if it is, that means it was evicted and needs to be brought back in
-		if (found_page) {
+		//if (found_page) {
+
+
+
 			//TODO figure this out once swap table is set up
 			//find page in memory
 			//swap out page based on lru
 			//swap page into recently freed spot
 			//update frametable
-		} else {
+		//} else {
 			//printf("Extending stack\n");
 			//printf("\n%x\n", pg_round_up(upage));
 			void* kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
 			if(kpage == NULL) {
-				intr_dump_frame (f);
-		 		PANIC ("Ran out of memory - fix this by implementing swaps"); 
+				evict_frame();
+
+		 		// try to palloc again
+		 		kpage = (void*)palloc_get_page(PAL_USER | PAL_ZERO);
+
+		 		if (kpage == NULL)
+		 		{
+		 			intr_dump_frame (f);
+		 			PANIC ("Ran out of memory - fix this by implementing swaps");
+		 		}
+
 		 		//pick page to swap out of memory based on lru
 		 		//swap it out
 		 		//grab the piece of memory where that page was, and put in new page
@@ -263,6 +277,7 @@ page_fault (struct intr_frame *f)
 			//for now panic the kernal
 			//later, swap memory out, and swap this memory in
 			bool success = install_page(upage, kpage, writable);
+			//bool success = install_page(upage, kpage, writable);
 			if (!success) {
 				//not sure what we need to do about this
 				intr_dump_frame (f);
@@ -271,14 +286,24 @@ page_fault (struct intr_frame *f)
 				//if it's not:
 				//get a new page, allocate new frametable entry, create pagetable enty to track this
 				//create pagetable entry
-				struct sup_page_table_entry* new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);
-				
+				struct sup_page_table_entry* new_elem = curr_page;
+				if (!found_page)
+				{
+					 new_elem = sup_page_table_insert(upage, timer_ticks(), -1, false, true);//create frametable entry
+				}
 
-				//create frametable entry
+				else
+				{
+					curr_page->access_time = timer_ticks();
+					//printf("loading frame from block\n");
+					load_frame_from_block(kpage, curr_page->block_index);
+				}
+				
 				struct frame_table_entry* ftable_entry = frame_table_insert(kpage, thread_current(), new_elem);
+				
 			}
 				
-		}
+		//}
 		
 		
 

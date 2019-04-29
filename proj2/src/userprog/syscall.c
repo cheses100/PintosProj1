@@ -14,6 +14,8 @@
 #include "userprog/process.h"
 #include "threads/palloc.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
+#include "devices/timer.h"
 
 
 
@@ -369,91 +371,97 @@ syscall_handler (struct intr_frame *f)
 		}
 		case SYS_MMAP:
 		{
-			// thread_current()->saved_esp = f->esp;
-			// sema_down(&IOLock);
-			// //int fd, void *addr
-			// int fd = *arg1;
-			// uint8_t* upage = (uint8_t*) arg2;
-			// struct fileListElem* curElem = getFileWithFd(fd);
-			// if (curElem == NULL) {
-			// 	sema_up(&IOLock);
-			// 	doBadExit();
-			// }
-			// struct file* fresh_file = file_reopen(curElem->mFile);
-			// if (fresh_file == NULL) {
-			// 	sema_up(&IOLock);
-			// 	doBadExit();
-			// }
+			thread_current()->saved_esp = f->esp;
+			sema_down(&IOLock);
+			//int fd, void *addr
+			int fd = *arg1;
+			uint8_t* upage = (uint8_t*) arg2;
+			struct fileListElem* curElem = getFileWithFd(fd);
+			if (curElem == NULL) {
+				sema_up(&IOLock);
+				doBadExit();
+			}
+			struct file* fresh_file = file_reopen(curElem->mFile);
+			if (fresh_file == NULL) {
+				sema_up(&IOLock);
+				doBadExit();
+			}
 
-			// uint32_t read_bytes = file_length(fresh_file);
+			uint32_t read_bytes = file_length(fresh_file);
+			uint32_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
+			while (read_bytes > 0 || zero_bytes > 0) 
+		    {
+		      /* Calculate how to fill this page.
+		         We will read PAGE_READ_BYTES bytes from FILE
+		         and zero the final PAGE_ZERO_BYTES bytes. */
+		      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+		      size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-
-			// uint32_t zero_bytes = PGSIZE - (read_bytes % PGSIZE);
-			// while (read_bytes > 0 || zero_bytes > 0) 
-		 //    {
-		 //      /* Calculate how to fill this page.
-		 //         We will read PAGE_READ_BYTES bytes from FILE
-		 //         and zero the final PAGE_ZERO_BYTES bytes. */
-		 //      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-		 //      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-
-		 //      /* Get a page of memory. */
-		 //      uint8_t *kpage = palloc_get_page (PAL_USER);
+		      /* Get a page of memory. */
+		      uint8_t *kpage = palloc_get_page (PAL_USER);
 		      
 		      
-		 //      if (kpage == NULL)
-		 //        sema_up(&IOLock);
-		 //    	//printf("kpage is null");
-			// 	doBadExit();
-		 //      /* Load this page. */
-		 //      if (file_read (fresh_file, kpage, page_read_bytes) != (int) page_read_bytes)
-		 //        {
-		 //          palloc_free_page (kpage);
-		 //          sema_up(&IOLock);
-		 //          //printf("file read failed");
-			// 	  doBadExit();
-		 //        }
-		 //      memset (kpage + page_read_bytes, 0, page_zero_bytes);
+		      if (kpage == NULL)
+		      {
+		      	evict_frame();
+		      	kpage = palloc_get_page (PAL_USER);
+		      	if (kpage == NULL)
+		      	{
+			        sema_up(&IOLock);
+			    	//printf("kpage is null");
+					doBadExit();
+				}
+		      }
+
+		      /* Load this page. */
+		      if (file_read (fresh_file, kpage, page_read_bytes) != (int) page_read_bytes)
+		        {
+		          palloc_free_page (kpage);
+		          sema_up(&IOLock);
+		          //printf("file read failed");
+				  doBadExit();
+		        }
+		      memset (kpage + page_read_bytes, 0, page_zero_bytes);
 
 
-		 //      /* Add the page to the process's address space. */
-		 //      if (!install_page (upage, kpage, true)) 
-		 //        {
-		 //          palloc_free_page (kpage);
-		 //          sema_up(&IOLock);
-		 //          //printf("failed to install page");
-			// 		doBadExit();
-		 //        }
+		      /* Add the page to the process's address space. */
+		      if (!install_page (upage, kpage, true)) 
+		        {
+		          palloc_free_page (kpage);
+		          sema_up(&IOLock);
+		          //printf("failed to install page");
+					doBadExit();
+		        }
 
 
-		 //        //create pagetable entry
-			// 	struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
-			// 	newElem->uservaddr = (uint32_t*)upage;
-			// 	newElem->dirty = false;
-			// 	newElem->access_time = timer_ticks();
-			// 	newElem->accessed = true;
-			// 	list_push_back (&(thread_current()->page_table), &newElem->elem);
+		        //create pagetable entry
+				struct sup_page_table_entry* newElem = malloc(sizeof(struct sup_page_table_entry));
+				newElem->uservaddr = (uint32_t*)upage;
+				newElem->dirty = false;
+				newElem->access_time = timer_ticks();
+				newElem->accessed = true;
+				list_push_back (&(thread_current()->page_table), &newElem->elem);
 
-			// 	//create frametable entry
-			// 	struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
-			// 	newFrameElem->frame = (uint32_t*)kpage;
-			// 	newFrameElem->owner = thread_current();
-			// 	newFrameElem->aux = newElem;
-			// 	list_push_back (&(frame_table), &newFrameElem->elem);
+				//create frametable entry
+				struct frame_table_entry* newFrameElem = malloc(sizeof(struct frame_table_entry));
+				newFrameElem->frame = (uint32_t*)kpage;
+				newFrameElem->owner = thread_current();
+				newFrameElem->aux = newElem;
+				list_push_back (&(frame_table), &newFrameElem->elem);
 
-		 //        read_bytes -= page_read_bytes;
-			// 	zero_bytes -= page_zero_bytes;
-			// 	upage += PGSIZE;
-		 //    }
-			// sema_up(&IOLock);
+		        read_bytes -= page_read_bytes;
+				zero_bytes -= page_zero_bytes;
+				upage += PGSIZE;
+		    }
+			sema_up(&IOLock);
 			break;
 		}
 		case SYS_MUNMAP:
 		{
-			// sema_down(&IOLock);
-			// //mapid_t mapid
-			// mapid_t mapid = *arg1;
-			// sema_up(&IOLock);
+			sema_down(&IOLock);
+			//mapid_t mapid
+			mapid_t mapid = *arg1;
+			sema_up(&IOLock);
 			break;
 		}
 	}

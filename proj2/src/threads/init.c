@@ -37,6 +37,9 @@
 #include "filesys/filesys.h"
 #include "filesys/fsutil.h"
 #endif
+#ifdef VM
+#include "vm/swap.h"
+#endif
 
 /* Page directory with kernel mappings only. */
 uint32_t *init_page_dir;
@@ -395,7 +398,10 @@ locate_block_devices (void)
   locate_block_device (BLOCK_SCRATCH, scratch_bdev_name);
 #ifdef VM
   locate_block_device (BLOCK_SWAP, swap_bdev_name);
+  swap_init();
 #endif
+
+
 }
 
 /* Figures out what block device to use for the given ROLE: the
@@ -420,6 +426,7 @@ locate_block_device (enum block_type role, const char *name)
           break;
     }
 
+    
   if (block != NULL)
     {
       printf ("%s: using %s\n", block_type_name (role), block_name (block));
